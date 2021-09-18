@@ -25,6 +25,7 @@ type memoryDB struct {
 	tlsHandshake   []*TLSHandshake
 	lookupHost     []*LookupHost
 	httpRoundTrip  []*HTTPRoundTrip
+	dnsRoundTrip   []*DNSRoundTrip
 
 	// mu provides mutual exclusion when accessing data
 	mu sync.Mutex
@@ -146,4 +147,17 @@ func (db *memoryDB) RemoveUntestedEndpoints() ([]*DomainEndpoint, error) {
 	}
 	db.domainEndpoint = left
 	return removed, nil
+}
+
+func (db *memoryDB) InsertIntoDNSRoundTrip(v *DNSRoundTrip) {
+	db.mu.Lock()
+	db.dnsRoundTrip = append(db.dnsRoundTrip, v)
+	db.mu.Unlock()
+}
+
+func (db *memoryDB) SelectAllFromDNSRoundTrip() (out []*DNSRoundTrip) {
+	db.mu.Lock()
+	out = append(out, db.dnsRoundTrip...)
+	db.mu.Unlock()
+	return
 }

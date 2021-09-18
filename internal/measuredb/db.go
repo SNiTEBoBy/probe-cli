@@ -26,7 +26,7 @@ type DB interface {
 	// SelectAllFromHTTPRoundTrip returns all HTTP round trips.
 	SelectAllFromHTTPRoundTrip() []*HTTPRoundTrip
 
-	// InsertIntoDomainEndpoint inserts an evento into the domain-endpoint table.
+	// InsertIntoDomainEndpoint inserts an event into the domain-endpoint table.
 	InsertIntoDomainEndpoint(v *DomainEndpoint)
 
 	// SelectAllFromDomainEndpoint returns all domain-endpoint info.
@@ -84,4 +84,11 @@ type DB interface {
 	// function returns the list of removed endpoints,
 	// which may be empty if there are none.
 	RemoveUntestedEndpoints() ([]*DomainEndpoint, error)
+
+	// InsertIntoDNSRoundTrip inserts an event into
+	// the dns round trip table.
+	InsertIntoDNSRoundTrip(v *DNSRoundTrip)
+
+	// SelectAllFromDNSRoundTrip returns all dns round trip info.
+	SelectAllFromDNSRoundTrip() []*DNSRoundTrip
 }

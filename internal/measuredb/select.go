@@ -42,3 +42,16 @@ func selectLookupHostWithRoundTripIP(db DB, id int64) ([]*LookupHost, error) {
 	}
 	return out, nil
 }
+
+func selectDNSRoundTripWithRoundTripIP(db DB, id int64) ([]*DNSRoundTrip, error) {
+	if !db.SupportsPreciseRoundTripMeasurements() {
+		return nil, errNoDatabaseSupport
+	}
+	var out []*DNSRoundTrip
+	for _, drt := range db.SelectAllFromDNSRoundTrip() {
+		if id == drt.RoundTripID {
+			out = append(out, drt)
+		}
+	}
+	return out, nil
+}

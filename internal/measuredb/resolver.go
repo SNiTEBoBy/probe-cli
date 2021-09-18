@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ooni/probe-cli/v3/internal/netxlite"
+	"github.com/ooni/probe-cli/v3/internal/netxlite/errorsx"
 )
 
 // WrapResolver wraps a Resolver to add measuredb capabilities.
@@ -18,6 +19,9 @@ type resolverDB struct {
 }
 
 // LookupHost contains the result of a host lookup.
+//
+// RoundTripID only make sense when we are using precise
+// HTTP round trip measurements.
 type LookupHost struct {
 	RoundTripID int64     // HTTP round trip ID
 	Network     string    // network used by the resolver (e.g., "dot")
@@ -44,4 +48,54 @@ func (r *resolverDB) LookupHost(ctx context.Context, domain string) ([]string, e
 		Addrs:       addrs,
 	})
 	return addrs, err
+}
+
+// WrapResolvers creates a compound resolver that wraps all the
+// underlying resolvers for measuredb capabilities and queries all
+// of them to get answers. On error it always returns NXDOMAIN.
+func WrapResolvers(db DB, or ...netxlite.Resolver) netxlite.Resolver {
+	var wr []netxlite.Resolver
+	for _, r := range or {
+		wr = append(wr, WrapResolver(db, r))
+	}
+	return &compoundResolver{wr: wr}
+}
+
+type compoundResolver struct {
+	wr []netxlite.Resolver
+}
+
+func (r *compoundResolver) LookupHost(ctx context.Context, domain string) ([]string, error) {
+	m := make(map[string]int)
+	for _, ir := range r.wr {
+		addrs, err := ir.LookupHost(ctx, domain)
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			m[addr]++
+		}
+	}
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	if len(out) < 1 {
+		return nil, errorsx.ErrOODNSNoSuchHost
+	}
+	return out, nil
+}
+
+func (r *compoundResolver) Network() string {
+	return "compound"
+}
+
+func (r *compoundResolver) Address() string {
+	return ""
+}
+
+func (r *compoundResolver) CloseIdleConnections() {
+	for _, ir := range r.wr {
+		ir.CloseIdleConnections()
+	}
 }

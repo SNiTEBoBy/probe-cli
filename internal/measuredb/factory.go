@@ -8,15 +8,27 @@ import (
 
 	"github.com/ooni/probe-cli/v3/internal/engine/httpheader"
 	"github.com/ooni/probe-cli/v3/internal/netxlite"
+	"github.com/ooni/probe-cli/v3/internal/netxlite/dnsx"
 	"github.com/ooni/probe-cli/v3/internal/runtimex"
 	"golang.org/x/net/publicsuffix"
 )
 
+func newDefaultCompoundResolver(logger netxlite.Logger, db DB) netxlite.Resolver {
+	sys := &netxlite.ResolverSystem{}
+	d := WrapConnector(db, netxlite.NewConnector(logger))
+	udp53 := dnsx.NewSerialResolver(
+		WrapDNSRoundTripper(db, dnsx.NewDNSOverUDP(d, "8.8.4.4:53")))
+	return WrapResolvers(db, sys, udp53)
+}
+
 // NewHTTPTransportStdlib is a convenience factory for creating
 // a new nextlite.HTTPTransport that uses the stdlib functionality
 // for resolving domain names and for TLS.
+//
+// Note: In addition to using the system resolver, this transport
+// may also use additional resolvers.
 func NewHTTPTransportStdlib(logger netxlite.Logger, db DB) netxlite.HTTPTransport {
-	resolver := WrapResolver(db, netxlite.NewResolverStdlib(logger))
+	resolver := newDefaultCompoundResolver(logger, db)
 	connector := WrapConnector(db, netxlite.NewConnector(logger))
 	thx := WrapTLSHandshaker(db, netxlite.NewTLSHandshakerStdlib(logger))
 	dialer := NewDialer(db, logger, resolver, connector)

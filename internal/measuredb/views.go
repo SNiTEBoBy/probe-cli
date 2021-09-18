@@ -8,6 +8,7 @@ type HTTPRoundTripView struct {
 	URL             string
 	EndpointID      int64
 	HTTPRoundTripID int64
+	DNSRoundTrip    []*DNSRoundTrip
 	LookupHost      []*LookupHost
 	HTTPRoundTrip   *HTTPRoundTrip
 	Endpoint        *HTTPEndpointView
@@ -35,11 +36,13 @@ func NewHTTPRoundTripView(db DB) ([]*HTTPRoundTripView, error) {
 			return nil, err
 		}
 		lh, _ := selectLookupHostWithRoundTripIP(db, rtx.RoundTripID)
+		dnsrt, _ := selectDNSRoundTripWithRoundTripIP(db, rtx.RoundTripID)
 		out = append(out, &HTTPRoundTripView{
 			URL:             rtx.RequestURL.String(),
 			EndpointID:      rtx.EndpointID,
 			HTTPRoundTripID: rtx.RoundTripID,
-			LookupHost:      lh, // nil means no lookup hosts in this round trip
+			DNSRoundTrip:    dnsrt, // nil means none in this round trip
+			LookupHost:      lh,    // same as above
 			HTTPRoundTrip:   rtx,
 			Endpoint:        eview,
 		})

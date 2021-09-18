@@ -42,11 +42,15 @@ type Resolver interface {
 // 5. enforces reasonable timeouts (
 // see https://github.com/ooni/probe/issues/1726).
 func NewResolverStdlib(logger Logger) Resolver {
+	return WrapResolver(logger, &resolverSystem{})
+}
+
+func WrapResolver(logger Logger, resolver Resolver) Resolver {
 	return &resolverIDNA{
 		Resolver: &resolverLogger{
 			Resolver: &resolverShortCircuitIPAddr{
 				Resolver: &resolverErrWrapper{
-					Resolver: &resolverSystem{},
+					Resolver: resolver,
 				},
 			},
 			Logger: logger,
