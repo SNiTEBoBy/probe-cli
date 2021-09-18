@@ -76,7 +76,7 @@ func WrapResolvers(db DB, or ...netxlite.Resolver) netxlite.Resolver {
 	for _, r := range or {
 		wr = append(wr, WrapResolver(db, r))
 	}
-	return &compoundResolver{wr: wr}
+	return netxlite.NewResolverLegacyAdapter(&compoundResolver{wr: wr})
 }
 
 type compoundResolver struct {

@@ -2,21 +2,36 @@ package dnsx
 
 import (
 	"github.com/miekg/dns"
+	"github.com/ooni/probe-cli/v3/internal/netxlite/dnsx/model"
 	"github.com/ooni/probe-cli/v3/internal/netxlite/errorsx"
 )
 
-// The Decoder decodes a DNS reply into A or AAAA entries. It will use the
-// provided qtype and only look for mathing entries. It will return error if
-// there are no entries for the requested qtype inside the reply.
+// HTTPS is an HTTPS reply.
+type HTTPS = model.HTTPS
+
+type https struct {
+	alpn []string
+}
+
+var _ HTTPS = &https{}
+
+func (h *https) ALPN() []string {
+	return h.alpn
+}
+
+// The Decoder decodes a DNS replies.
 type Decoder interface {
-	Decode(qtype uint16, data []byte) ([]string, error)
+	// DecodeLookupHost decodes an A or AAAA reply.
+	DecodeLookupHost(qtype uint16, data []byte) ([]string, error)
+
+	// DecodeHTTPS decodes an HTTPS reply.
+	DecodeHTTPS(data []byte) (HTTPS, error)
 }
 
 // MiekgDecoder uses github.com/miekg/dns to implement the Decoder.
 type MiekgDecoder struct{}
 
-// Decode implements Decoder.Decode.
-func (d *MiekgDecoder) Decode(qtype uint16, data []byte) ([]string, error) {
+func (d *MiekgDecoder) parseReply(data []byte) (*dns.Msg, error) {
 	reply := new(dns.Msg)
 	if err := reply.Unpack(data); err != nil {
 		return nil, err
@@ -25,12 +40,43 @@ func (d *MiekgDecoder) Decode(qtype uint16, data []byte) ([]string, error) {
 	// TODO(bassosimone): add support for lame referral.
 	switch reply.Rcode {
 	case dns.RcodeSuccess:
+		return reply, nil
 	case dns.RcodeNameError:
 		return nil, errorsx.ErrOODNSNoSuchHost
 	case dns.RcodeRefused:
 		return nil, errorsx.ErrOODNSRefused
 	default:
 		return nil, errorsx.ErrOODNSMisbehaving
+	}
+}
+
+func (d *MiekgDecoder) DecodeHTTPS(data []byte) (HTTPS, error) {
+	reply, err := d.parseReply(data)
+	if err != nil {
+		return nil, err
+	}
+	out := &https{}
+	for _, answer := range reply.Answer {
+		switch avalue := answer.(type) {
+		case *dns.HTTPS:
+			for _, v := range avalue.Value {
+				switch extv := v.(type) {
+				case *dns.SVCBAlpn:
+					out.alpn = append(out.alpn, extv.Alpn...)
+				}
+			}
+		}
+	}
+	if len(out.alpn) <= 0 {
+		return nil, errorsx.ErrOODNSNoAnswer
+	}
+	return out, nil
+}
+
+func (d *MiekgDecoder) DecodeLookupHost(qtype uint16, data []byte) ([]string, error) {
+	reply, err := d.parseReply(data)
+	if err != nil {
+		return nil, err
 	}
 	var addrs []string
 	for _, answer := range reply.Answer {
