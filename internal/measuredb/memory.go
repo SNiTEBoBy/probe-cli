@@ -20,12 +20,13 @@ func NewMemoryDB() DB {
 
 type memoryDB struct {
 	// These variables contain the DB "tables"
-	connection     []*Connection
-	domainEndpoint []*DomainEndpoint
-	tlsHandshake   []*TLSHandshake
-	lookupHost     []*LookupHost
-	httpRoundTrip  []*HTTPRoundTrip
-	dnsRoundTrip   []*DNSRoundTrip
+	connection       []*Connection
+	domainEndpoint   []*DomainEndpoint
+	tlsHandshake     []*TLSHandshake
+	lookupHost       []*LookupHost
+	httpRoundTrip    []*HTTPRoundTrip
+	dnsRoundTrip     []*DNSRoundTrip
+	httpRoundTripURL []*HTTPRoundTripURL
 
 	// mu provides mutual exclusion when accessing data
 	mu sync.Mutex
@@ -158,6 +159,19 @@ func (db *memoryDB) InsertIntoDNSRoundTrip(v *DNSRoundTrip) {
 func (db *memoryDB) SelectAllFromDNSRoundTrip() (out []*DNSRoundTrip) {
 	db.mu.Lock()
 	out = append(out, db.dnsRoundTrip...)
+	db.mu.Unlock()
+	return
+}
+
+func (db *memoryDB) InsertIntoHTTPRoundTripURL(v *HTTPRoundTripURL) {
+	db.mu.Lock()
+	db.httpRoundTripURL = append(db.httpRoundTripURL, v)
+	db.mu.Unlock()
+}
+
+func (db *memoryDB) SelectAllFromHTTPRoundTripURL() (out []*HTTPRoundTripURL) {
+	db.mu.Lock()
+	out = append(out, db.httpRoundTripURL...)
 	db.mu.Unlock()
 	return
 }

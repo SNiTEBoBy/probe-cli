@@ -39,6 +39,12 @@ type HTTPRoundTrip struct {
 	ResponseBodySnapshot []byte      // response body snapshot
 }
 
+// HTTPRoundTripURL maps a round trip to its URL.
+type HTTPRoundTripURL struct {
+	HTTPRoundTripID int64
+	URL             *url.URL
+}
+
 // We only read a small snapshot of the body to keep measurements
 // lean, since we're mostly interested in TLS interference nowadays
 // but we'll also allow for reading more bytes from the conn.
@@ -48,6 +54,10 @@ func (txp *httpTransportDB) RoundTrip(req *http.Request) (*http.Response, error)
 	defer txp.DB.OnLeaveHTTPRoundTrip()
 	txp.DB.OnEnterHTTPRoundTrip() // allow for precise round trip counting
 	started := time.Now()
+	txp.DB.InsertIntoHTTPRoundTripURL(&HTTPRoundTripURL{
+		HTTPRoundTripID: txp.DB.HTTPRoundTripID(),
+		URL:             req.URL,
+	})
 	resp, err := txp.HTTPTransport.RoundTrip(req)
 	rt := &HTTPRoundTrip{
 		EndpointID:    txp.DB.EndpointID(), // MUST be _after_ RoundTrip

@@ -91,4 +91,12 @@ type DB interface {
 
 	// SelectAllFromDNSRoundTrip returns all dns round trip info.
 	SelectAllFromDNSRoundTrip() []*DNSRoundTrip
+
+	// InsertIntoHTTPRoundTripURL inserts an event into
+	// the http-round-trip-url table.
+	InsertIntoHTTPRoundTripURL(v *HTTPRoundTripURL)
+
+	// SelectAllFromHTTPRoundTripURL returns all the
+	// entries of the http-round-trip-url table.
+	SelectAllFromHTTPRoundTripURL() []*HTTPRoundTripURL
 }
