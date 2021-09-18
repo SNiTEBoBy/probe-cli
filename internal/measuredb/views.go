@@ -1,5 +1,7 @@
 package measuredb
 
+// This code contains code to build views out of the database content.
+
 import "errors"
 
 // HTTPRoundTripView is an HTTP round trip centric view
@@ -8,9 +10,9 @@ type HTTPRoundTripView struct {
 	URL             string
 	EndpointID      int64
 	HTTPRoundTripID int64
-	DNSRoundTrip    []*DNSRoundTrip
-	LookupHost      []*LookupHost
-	HTTPRoundTrip   *HTTPRoundTrip
+	DNSRoundTrip    []*DNSRoundTripEvent
+	LookupHost      []*LookupHostEvent
+	HTTPRoundTrip   *HTTPRoundTripEvent
 	Endpoint        *HTTPEndpointView
 }
 
@@ -26,21 +28,21 @@ var (
 // may return an empty list even in case of success. This condition
 // occurs when there are no relevant data inside the DB.
 func NewHTTPRoundTripView(db DB) ([]*HTTPRoundTripView, error) {
-	if !db.SupportsPreciseRoundTripMeasurements() {
+	if !db.SupportsPreciseHTTPRoundTripMeasurements() {
 		return nil, errNoDatabaseSupport
 	}
 	var out []*HTTPRoundTripView
 	for _, rtx := range db.SelectAllFromHTTPRoundTrip() {
-		eview, err := NewHTTPEndpointView(db, rtx.RoundTripID, rtx.EndpointID)
+		eview, err := NewHTTPEndpointView(db, rtx.HTTPRoundTripID, rtx.EndpointID)
 		if err != nil {
 			return nil, err
 		}
-		lh, _ := selectLookupHostWithRoundTripIP(db, rtx.RoundTripID)
-		dnsrt, _ := selectDNSRoundTripWithRoundTripIP(db, rtx.RoundTripID)
+		lh, _ := selectLookupHostWithRoundTripIP(db, rtx.HTTPRoundTripID)
+		dnsrt, _ := selectDNSRoundTripWithRoundTripIP(db, rtx.HTTPRoundTripID)
 		out = append(out, &HTTPRoundTripView{
 			URL:             rtx.RequestURL.String(),
 			EndpointID:      rtx.EndpointID,
-			HTTPRoundTripID: rtx.RoundTripID,
+			HTTPRoundTripID: rtx.HTTPRoundTripID,
 			DNSRoundTrip:    dnsrt, // nil means none in this round trip
 			LookupHost:      lh,    // same as above
 			HTTPRoundTrip:   rtx,
@@ -53,8 +55,8 @@ func NewHTTPRoundTripView(db DB) ([]*HTTPRoundTripView, error) {
 // HTTPEndpointView is a view of all the events occurring to
 // an endpoint identified by a given endpoint ID.
 type HTTPEndpointView struct {
-	NetworkEvents []*Connection
-	TLSHandshake  *TLSHandshake
+	NetworkEvents []*ConnectionEvent
+	TLSHandshake  *TLSHandshakeEvent
 }
 
 // NewHTTPEndpointView attempts to build an HTTPEndpointView
@@ -66,23 +68,24 @@ type HTTPEndpointView struct {
 //
 // CAVEAT: This view excludes endpoint events occurring outside
 // of a given round trip. So, persistent connections will appear
-// out of the blue without connect or handshake.
+// out of the blue without connect or handshake. Likewise, we
+// won't see DNS resolutions when we don't perform them in a round trip.
 func NewHTTPEndpointView(db DB, roundTripID, endpointID int64) (*HTTPEndpointView, error) {
-	if !db.SupportsPreciseRoundTripMeasurements() {
+	if !db.SupportsPreciseHTTPRoundTripMeasurements() {
 		return nil, errNoDatabaseSupport
 	}
 	out := &HTTPEndpointView{}
 	for _, conn := range db.SelectAllFromConnection() {
-		if endpointID == conn.EndpointID && roundTripID == conn.RoundTripID {
+		if endpointID == conn.EndpointID && roundTripID == conn.HTTPRoundTripID {
 			out.NetworkEvents = append(out.NetworkEvents, conn)
 		}
 	}
 	for _, thx := range db.SelectAllFromTLSHandshake() {
-		if endpointID == thx.EndpointID && roundTripID == thx.RoundTripID {
+		if endpointID == thx.EndpointID && roundTripID == thx.HTTPRoundTripID {
 			if out.TLSHandshake != nil {
 				// We expect to see a maximum of one TCP handshakes
 				// during a round trip. If we see more than one this
-				// is a bug in how we create the database.
+				// is a bug in how we create/parse the data.
 				return nil, errTooManyTLSHandshakes
 			}
 			out.TLSHandshake = thx
@@ -95,7 +98,7 @@ func NewHTTPEndpointView(db DB, roundTripID, endpointID int64) (*HTTPEndpointVie
 // instances that use the same HTTP/HTTPS URL.
 type HTTPURLView struct {
 	URL        string
-	LookupHost []*LookupHost
+	LookupHost []*LookupHostEvent
 	Endpoints  []*HTTPRoundTripView
 }
 
@@ -116,7 +119,7 @@ func NewHTTPURLView(vv ...*HTTPRoundTripView) (out []*HTTPURLView) {
 	return out
 }
 
-func viewMergeLookupHost(vv []*HTTPRoundTripView) (out []*LookupHost) {
+func viewMergeLookupHost(vv []*HTTPRoundTripView) (out []*LookupHostEvent) {
 	for _, rtx := range vv {
 		if rtx.LookupHost != nil {
 			out = append(out, rtx.LookupHost...)

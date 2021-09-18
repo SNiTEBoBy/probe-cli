@@ -1,5 +1,8 @@
 package measuredb
 
+// This file contains code to wrap HTTPTransports and
+// get measuredb measurement capabilities
+
 import (
 	"bytes"
 	"io"
@@ -12,22 +15,37 @@ import (
 )
 
 // WrapHTTPTransport wraps an HTTPTransport to add measuredb capabilities.
+//
+// RoundTrip algorithm
+//
+// 1. try to enforce precise HTTP round trip measurements (which
+// depends on whether the database supports that);
+//
+// 2. register the round trip ID to URL binding in the DB;
+//
+// 3. do the actual round trip;
+//
+// 4. prepare the HTTP round trip event;
+//
+// 5. if no error, read a snapshot of the body;
+//
+// 6. save the round trip event and return.
 func WrapHTTPTransport(db DB, txp netxlite.HTTPTransport) netxlite.HTTPTransport {
-	return &httpTransportDB{HTTPTransport: txp, DB: db}
+	return &httpTransportDB{HTTPTransport: txp, db: db}
 }
 
 type httpTransportDB struct {
 	netxlite.HTTPTransport
-	DB
+	db DB
 }
 
-// HTTPRoundTrip contains information about an HTTP round trip.
+// HTTPRoundTripEvent contains information about an HTTP round trip.
 //
 // Note that EndpointID and RoundTripID only make sense when
 // the DB we're using enforces precise HTTP round trips.
-type HTTPRoundTrip struct {
+type HTTPRoundTripEvent struct {
 	EndpointID           int64       // endpoint ID
-	RoundTripID          int64       // HTTP round trip ID
+	HTTPRoundTripID      int64       // HTTP round trip ID
 	RequestMethod        string      // request method
 	RequestURL           *url.URL    // request URL
 	RequestHeader        http.Header // request headers
@@ -39,8 +57,8 @@ type HTTPRoundTrip struct {
 	ResponseBodySnapshot []byte      // response body snapshot
 }
 
-// HTTPRoundTripURL maps a round trip to its URL.
-type HTTPRoundTripURL struct {
+// HTTPRoundTripURLBinding maps a round trip to its URL.
+type HTTPRoundTripURLBinding struct {
 	HTTPRoundTripID int64
 	URL             *url.URL
 }
@@ -51,26 +69,26 @@ type HTTPRoundTripURL struct {
 const maxBodySnapshot = 1 << 11
 
 func (txp *httpTransportDB) RoundTrip(req *http.Request) (*http.Response, error) {
-	defer txp.DB.OnLeaveHTTPRoundTrip()
-	txp.DB.OnEnterHTTPRoundTrip() // allow for precise round trip counting
+	defer txp.db.OnLeaveHTTPRoundTrip()
+	txp.db.OnEnterHTTPRoundTrip() // allow for precise round trip counting
 	started := time.Now()
-	txp.DB.InsertIntoHTTPRoundTripURL(&HTTPRoundTripURL{
-		HTTPRoundTripID: txp.DB.HTTPRoundTripID(),
+	txp.db.InsertIntoHTTPRoundTripURL(&HTTPRoundTripURLBinding{
+		HTTPRoundTripID: txp.db.HTTPRoundTripID(),
 		URL:             req.URL,
 	})
 	resp, err := txp.HTTPTransport.RoundTrip(req)
-	rt := &HTTPRoundTrip{
-		EndpointID:    txp.DB.EndpointID(), // MUST be _after_ RoundTrip
-		RoundTripID:   txp.DB.HTTPRoundTripID(),
-		RequestMethod: req.Method,
-		RequestURL:    req.URL,
-		RequestHeader: req.Header,
-		Started:       started,
+	rt := &HTTPRoundTripEvent{
+		EndpointID:      txp.db.EndpointID(), // MUST be _after_ RoundTrip
+		HTTPRoundTripID: txp.db.HTTPRoundTripID(),
+		RequestMethod:   req.Method,
+		RequestURL:      req.URL,
+		RequestHeader:   req.Header,
+		Started:         started,
 	}
 	if err != nil {
 		rt.Finished = time.Now()
 		rt.Error = err
-		txp.DB.InsertIntoHTTPRoundTrip(rt)
+		txp.db.InsertIntoHTTPRoundTrip(rt)
 		return nil, err
 	}
 	rt.ResponseStatus = resp.StatusCode
@@ -81,7 +99,7 @@ func (txp *httpTransportDB) RoundTrip(req *http.Request) (*http.Response, error)
 		// TODO(bassosimone): ensure we support unexpected EOF
 		rt.Finished = time.Now()
 		rt.Error = err
-		txp.DB.InsertIntoHTTPRoundTrip(rt)
+		txp.db.InsertIntoHTTPRoundTrip(rt)
 		return nil, err
 	}
 	resp.Body = &httpTransportBody{ // allow for reading more if needed
@@ -90,7 +108,7 @@ func (txp *httpTransportDB) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 	rt.ResponseBodySnapshot = body
 	rt.Finished = time.Now()
-	txp.DB.InsertIntoHTTPRoundTrip(rt)
+	txp.db.InsertIntoHTTPRoundTrip(rt)
 	return resp, nil
 }
 

@@ -1,5 +1,8 @@
 package measuredb
 
+// This file contains code to wrap netxlite's TLS code
+// for adding support for measuredb measurements.
+
 import (
 	"context"
 	"crypto/tls"
@@ -13,21 +16,21 @@ import (
 
 // WrapTLSHandshaker wraps a TLSHandshaker to add measuredb capabilities.
 func WrapTLSHandshaker(db DB, thx netxlite.TLSHandshaker) netxlite.TLSHandshaker {
-	return &tlsHandshakerDB{TLSHandshaker: thx, DB: db}
+	return &tlsHandshakerDB{TLSHandshaker: thx, db: db}
 }
 
 type tlsHandshakerDB struct {
 	netxlite.TLSHandshaker
-	DB
+	db DB
 }
 
-// TLSHandshake contains a TLS handshake event.
+// TLSHandshakeEvent contains a TLS handshake event.
 //
-// Note that EndpointID and RoundTripID only make sense when
+// Note that EndpointID and HTTPRoundTripID only make sense when
 // the DB we're using enforces precise HTTP round trips.
-type TLSHandshake struct {
+type TLSHandshakeEvent struct {
 	EndpointID      int64     // Endpoint ID
-	RoundTripID     int64     // HTTP round trip ID
+	HTTPRoundTripID int64     // HTTP round trip ID
 	Engine          string    // engine we're using (e.g., "yawning")
 	Network         string    // network (e.g., "tcp")
 	RemoteAddr      string    // remote address (e.g., "1.1.1.1:443")
@@ -52,9 +55,9 @@ func (thx *tlsHandshakerDB) Handshake(ctx context.Context,
 	started := time.Now()
 	tconn, state, err := thx.TLSHandshaker.Handshake(ctx, conn, config)
 	finished := time.Now()
-	thx.DB.InsertIntoTLSHandshake(&TLSHandshake{
-		EndpointID:      thx.DB.EndpointID(),
-		RoundTripID:     thx.DB.HTTPRoundTripID(),
+	thx.db.InsertIntoTLSHandshake(&TLSHandshakeEvent{
+		EndpointID:      thx.db.EndpointID(),
+		HTTPRoundTripID: thx.db.HTTPRoundTripID(),
 		Engine:          "", // TODO(bassosimone): add support
 		Network:         network,
 		RemoteAddr:      remoteAddr,

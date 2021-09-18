@@ -1,5 +1,7 @@
 package measuredb
 
+// This file contains the implementation of an in-memory DB
+
 import (
 	"sync"
 
@@ -20,94 +22,95 @@ func NewMemoryDB() DB {
 
 type memoryDB struct {
 	// These variables contain the DB "tables"
-	connection       []*Connection
-	domainEndpoint   []*DomainEndpoint
-	tlsHandshake     []*TLSHandshake
-	lookupHost       []*LookupHost
-	httpRoundTrip    []*HTTPRoundTrip
-	dnsRoundTrip     []*DNSRoundTrip
-	httpRoundTripURL []*HTTPRoundTripURL
+	connection       []*ConnectionEvent
+	domainEndpoint   []*DomainEndpointBinding
+	tlsHandshake     []*TLSHandshakeEvent
+	lookupHost       []*LookupHostEvent
+	httpRoundTrip    []*HTTPRoundTripEvent
+	dnsRoundTrip     []*DNSRoundTripEvent
+	httpRoundTripURL []*HTTPRoundTripURLBinding
 	testHelperMeas   []*TestHelperMeasurement
 
 	// mu provides mutual exclusion when accessing data
 	mu sync.Mutex
 
-	// rtBarrier ensures each round trip runs separately
+	// rtBarrier ensures each round trip runs separately thus
+	// allowing for precise HTTP round trip measurements
 	rtBarrier sync.Mutex
 
-	// rtID is the next round trip ID
+	// rtID is the round trip ID
 	rtID *atomicx.Int64
 
-	// eID is the next remote endpoint ID
+	// eID is the endpoint ID
 	eID *atomicx.Int64
 }
 
-func (db *memoryDB) InsertIntoConnection(c *Connection) {
+func (db *memoryDB) InsertIntoConnection(c *ConnectionEvent) {
 	db.mu.Lock()
 	db.connection = append(db.connection, c)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromConnection() (out []*Connection) {
+func (db *memoryDB) SelectAllFromConnection() (out []*ConnectionEvent) {
 	db.mu.Lock()
 	out = append(out, db.connection...)
 	db.mu.Unlock()
 	return
 }
 
-func (db *memoryDB) InsertIntoTLSHandshake(th *TLSHandshake) {
+func (db *memoryDB) InsertIntoTLSHandshake(th *TLSHandshakeEvent) {
 	db.mu.Lock()
 	db.tlsHandshake = append(db.tlsHandshake, th)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromTLSHandshake() (out []*TLSHandshake) {
+func (db *memoryDB) SelectAllFromTLSHandshake() (out []*TLSHandshakeEvent) {
 	db.mu.Lock()
 	out = append(out, db.tlsHandshake...)
 	db.mu.Unlock()
 	return
 }
 
-func (db *memoryDB) InsertIntoLookupHost(lh *LookupHost) {
+func (db *memoryDB) InsertIntoLookupHost(lh *LookupHostEvent) {
 	db.mu.Lock()
 	db.lookupHost = append(db.lookupHost, lh)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromLookupHost() (out []*LookupHost) {
+func (db *memoryDB) SelectAllFromLookupHost() (out []*LookupHostEvent) {
 	db.mu.Lock()
 	out = append(out, db.lookupHost...)
 	db.mu.Unlock()
 	return
 }
 
-func (db *memoryDB) InsertIntoHTTPRoundTrip(rt *HTTPRoundTrip) {
+func (db *memoryDB) InsertIntoHTTPRoundTrip(rt *HTTPRoundTripEvent) {
 	db.mu.Lock()
 	db.httpRoundTrip = append(db.httpRoundTrip, rt)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromHTTPRoundTrip() (out []*HTTPRoundTrip) {
+func (db *memoryDB) SelectAllFromHTTPRoundTrip() (out []*HTTPRoundTripEvent) {
 	db.mu.Lock()
 	out = append(out, db.httpRoundTrip...)
 	db.mu.Unlock()
 	return
 }
 
-func (db *memoryDB) InsertIntoDomainEndpoint(v *DomainEndpoint) {
+func (db *memoryDB) InsertIntoDomainEndpoint(v *DomainEndpointBinding) {
 	db.mu.Lock()
 	db.domainEndpoint = append(db.domainEndpoint, v)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromDomainEndpoint() (out []*DomainEndpoint) {
+func (db *memoryDB) SelectAllFromDomainEndpoint() (out []*DomainEndpointBinding) {
 	db.mu.Lock()
 	out = append(out, db.domainEndpoint...)
 	db.mu.Unlock()
 	return
 }
 
-func (db *memoryDB) SupportsPreciseRoundTripMeasurements() bool {
+func (db *memoryDB) SupportsPreciseHTTPRoundTripMeasurements() bool {
 	return true
 }
 
@@ -132,12 +135,12 @@ func (db *memoryDB) OnTryEndpoint(network, address string) {
 	db.eID.Add(1)
 }
 
-func (db *memoryDB) RemoveUntestedEndpoints() ([]*DomainEndpoint, error) {
+func (db *memoryDB) RemoveUntestedEndpoints() ([]*DomainEndpointBinding, error) {
 	defer db.mu.Unlock()
 	db.mu.Lock()
 	var (
-		removed []*DomainEndpoint
-		left    []*DomainEndpoint
+		removed []*DomainEndpointBinding
+		left    []*DomainEndpointBinding
 	)
 	for _, dep := range db.domainEndpoint {
 		// Reminder that an EndpointID <= 0 means "not supported"
@@ -151,26 +154,26 @@ func (db *memoryDB) RemoveUntestedEndpoints() ([]*DomainEndpoint, error) {
 	return removed, nil
 }
 
-func (db *memoryDB) InsertIntoDNSRoundTrip(v *DNSRoundTrip) {
+func (db *memoryDB) InsertIntoDNSRoundTrip(v *DNSRoundTripEvent) {
 	db.mu.Lock()
 	db.dnsRoundTrip = append(db.dnsRoundTrip, v)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromDNSRoundTrip() (out []*DNSRoundTrip) {
+func (db *memoryDB) SelectAllFromDNSRoundTrip() (out []*DNSRoundTripEvent) {
 	db.mu.Lock()
 	out = append(out, db.dnsRoundTrip...)
 	db.mu.Unlock()
 	return
 }
 
-func (db *memoryDB) InsertIntoHTTPRoundTripURL(v *HTTPRoundTripURL) {
+func (db *memoryDB) InsertIntoHTTPRoundTripURL(v *HTTPRoundTripURLBinding) {
 	db.mu.Lock()
 	db.httpRoundTripURL = append(db.httpRoundTripURL, v)
 	db.mu.Unlock()
 }
 
-func (db *memoryDB) SelectAllFromHTTPRoundTripURL() (out []*HTTPRoundTripURL) {
+func (db *memoryDB) SelectAllFromHTTPRoundTripURL() (out []*HTTPRoundTripURLBinding) {
 	db.mu.Lock()
 	out = append(out, db.httpRoundTripURL...)
 	db.mu.Unlock()

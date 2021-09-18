@@ -1,5 +1,8 @@
 package measuredb
 
+// This file contains code to use the WebConnectivity Test
+// Helper (aka WCTH) as the TestHelper.
+
 import (
 	"bytes"
 	"context"
@@ -72,7 +75,7 @@ var errWCTHRequestFailed = errors.New("wcth: request failed")
 
 func (w *wcthWorker) Run(
 	ctx context.Context, endpoints []string) (*TestHelperMeasurement, error) {
-	URL, err := SelectURLFromHTTPRoundTripURLWithCurrentRoundTrip(w.db)
+	URL, err := selectURLFromHTTPRoundTripURLWithCurrentRoundTrip(w.db)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +99,8 @@ func (w *wcthWorker) Run(
 	if resp.StatusCode != 200 {
 		return nil, errWCTHRequestFailed
 	}
-	const maxBodySize = 1 << 20
-	r := io.LimitReader(resp.Body, maxBodySize)
+	const maxResponseBodySize = 1 << 20 // limit test helper response size
+	r := io.LimitReader(resp.Body, maxResponseBodySize)
 	respBody, err := iox.ReadAllContext(ctx, r)
 	if err != nil {
 		return nil, err

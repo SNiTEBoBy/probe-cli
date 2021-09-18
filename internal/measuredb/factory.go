@@ -1,5 +1,8 @@
 package measuredb
 
+// This file contains convenience factories to write less code
+// and be confident about correct initialization
+
 import (
 	"context"
 	"io"
@@ -25,12 +28,13 @@ func newDefaultCompoundResolver(logger netxlite.Logger, db DB) netxlite.Resolver
 // a new nextlite.HTTPTransport that uses the stdlib functionality
 // for resolving domain names and for TLS.
 //
-// Note: In addition to using the system resolver, this transport
+// Note: in addition to using the system resolver, this transport
 // may also use additional resolvers.
 func NewHTTPTransportStdlib(logger netxlite.Logger, db DB) netxlite.HTTPTransport {
 	resolver := newDefaultCompoundResolver(logger, db)
 	connector := WrapConnector(db, netxlite.NewConnector(logger))
 	thx := WrapTLSHandshaker(db, netxlite.NewTLSHandshakerStdlib(logger))
+	// UNDOCUMENTED: we don't mention about this feature for now
 	wcthw := NewWCTHWorker(logger, db, &http.Client{}, "https://wcth.ooni.io/")
 	dialer := NewDialer(logger, db, wcthw, resolver, connector)
 	td := netxlite.NewTLSDialer(dialer, thx)
@@ -47,7 +51,7 @@ func NewCookieJar() http.CookieJar {
 	jar, err := cookiejar.New(&cookiejar.Options{
 		PublicSuffixList: publicsuffix.List,
 	})
-	// Safe to assert here: cookiejar.New _always_ returns nil.
+	// Safe to PanicOnError here: cookiejar.New _always_ returns nil.
 	runtimex.PanicOnError(err, "cookiejar.New failed")
 	return jar
 }

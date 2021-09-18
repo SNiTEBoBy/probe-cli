@@ -1,5 +1,8 @@
 package measuredb
 
+// This file contains code for creating a Dialer that has
+// measuredb measurement capabilities.
+
 import (
 	"context"
 	"errors"
@@ -73,23 +76,25 @@ func (d *dialerDB) CloseIdleConnections() {
 // error actually occurred to the caller (for now at least).
 var ErrDial = errors.New("dial failed")
 
+// The constants indicate whether we discovered an endpoint
+// in the probe or thanks to the test helper.
 var (
 	EndpointOriginProbe      = "probe"
 	EndpointOriginTestHelper = "th"
 )
 
-// DomainEndpoint maps a domain to one of its endpoints.
+// DomainEndpointBinding maps a domain to one of its endpoints.
 //
-// This data structure contains enough information to test
-// the endpoint at hand at a later time.
+// This data structure contains enough information to re-test
+// an untested endpoint at a later time.
 //
 // CAVEAT: HTTPRoundTripID is only meaningful when the
 // underlying DB supports precise round trip measurements.
-type DomainEndpoint struct {
+type DomainEndpointBinding struct {
 	// HTTPRoundTripID is the HTTP round trip ID
 	HTTPRoundTripID int64
 
-	// Origin indicates the endpoint origin
+	// Origin indicates the endpoint origin ("th" or "probe")
 	Origin string
 
 	// Domain
@@ -104,7 +109,7 @@ type DomainEndpoint struct {
 	conn net.Conn `json:"-"`
 }
 
-func domainEndpointsAsEndpoints(des []*DomainEndpoint) (out []string) {
+func domainEndpointsAsEndpoints(des []*DomainEndpointBinding) (out []string) {
 	for _, de := range des {
 		out = append(out, de.Address)
 	}
@@ -112,9 +117,9 @@ func domainEndpointsAsEndpoints(des []*DomainEndpoint) (out []string) {
 }
 
 func newDomainEndpoints(db DB,
-	origin, domain, network, port string, addrs ...string) (out []*DomainEndpoint) {
+	origin, domain, network, port string, addrs ...string) (out []*DomainEndpointBinding) {
 	for _, addr := range addrs {
-		out = append(out, &DomainEndpoint{
+		out = append(out, &DomainEndpointBinding{
 			HTTPRoundTripID: db.HTTPRoundTripID(),
 			Origin:          origin,
 			Domain:          domain,
@@ -128,8 +133,8 @@ func newDomainEndpoints(db DB,
 }
 
 func domainEndpointsMergeTestHelperEndpoints(db DB,
-	domain, network, port string, endpoints []*DomainEndpoint,
-	resp *TestHelperMeasurement) []*DomainEndpoint {
+	domain, network, port string, endpoints []*DomainEndpointBinding,
+	resp *TestHelperMeasurement) []*DomainEndpointBinding {
 	m := make(map[string]bool)
 	for _, epnt := range endpoints {
 		m[epnt.Address] = true
@@ -137,7 +142,7 @@ func domainEndpointsMergeTestHelperEndpoints(db DB,
 	for _, entry := range resp.DNSAddrs {
 		address := net.JoinHostPort(entry, port)
 		if !m[entry] {
-			endpoints = append(endpoints, &DomainEndpoint{
+			endpoints = append(endpoints, &DomainEndpointBinding{
 				HTTPRoundTripID: db.HTTPRoundTripID(),
 				Origin:          EndpointOriginTestHelper,
 				Domain:          domain,
@@ -173,7 +178,7 @@ func (d *dialerDB) DialContext(
 }
 
 func (d *dialerDB) dialLoop(
-	ctx context.Context, endpoints []*DomainEndpoint) (net.Conn, error) {
+	ctx context.Context, endpoints []*DomainEndpointBinding) (net.Conn, error) {
 	// TODO(bassosimone): could we run these steps in parallel
 	// without screwing up with connection ID assignation?
 	for _, epnt := range endpoints {
@@ -181,6 +186,9 @@ func (d *dialerDB) dialLoop(
 		// Implementation note: we MUST get the endpoint ID HERE rather
 		// than before DialContext because we increment the endpoint
 		// ID inside of the connector.DialContext function.
+		//
+		// TODO(bassosimone): it would be cool if the returned connection
+		// contained its own endpoint ID so we don't need this here
 		epnt.EndpointID = d.db.EndpointID()
 		if err == nil {
 			epnt.conn = conn

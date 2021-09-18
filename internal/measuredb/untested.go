@@ -1,5 +1,7 @@
 package measuredb
 
+// This file contains code to test untested endpoints.
+
 import (
 	"context"
 	"crypto/tls"
@@ -39,7 +41,7 @@ type UntestedHTTPEndpointInstructions struct {
 // don't care; (2) for HTTP we mainly assume that censorship
 // is implemented using _content_ based proxies, not endpoints.
 func NewUntestedHTTPEndpointInstructions(
-	db DB, epnts []*DomainEndpoint) ([]*UntestedHTTPEndpointInstructions, error) {
+	db DB, epnts []*DomainEndpointBinding) ([]*UntestedHTTPEndpointInstructions, error) {
 	var out []*UntestedHTTPEndpointInstructions
 	for _, dep := range epnts {
 		rtx, err := selectHTTPRoundTripWithRoundTripID(db, dep.HTTPRoundTripID)
@@ -74,8 +76,8 @@ func NewUntestedHTTPEndpointInstructions(
 // by the input instructions sequentially. There is no result for
 // this operation but the side effect of adding measurements to the DB.
 //
-// CAVEAT: even if we were attempting to run measurements in parallel
-// the precise round trip measurement rule would prevent that.
+// CAVEAT: here we cannot measure in parallel if we're using a DB
+// implementing precise HTTP round trips measurements.
 func MeasureUntestedEndpoints(ctx context.Context, db DB,
 	logger netxlite.Logger, instr ...*UntestedHTTPEndpointInstructions) {
 	for _, uei := range instr {
@@ -89,7 +91,8 @@ func MeasureUntestedEndpoints(ctx context.Context, db DB,
 //
 // CAVEAT: this function assumes we are going to use the Go standard
 // library to measure the untested endpoints. This fact may change in
-// a more mature version of this implementation.
+// a more mature version of this implementation where we could get
+// whether to use parroting from TLSHandshakeEvent.
 func (instr *UntestedHTTPEndpointInstructions) Measure(
 	ctx context.Context, db DB, logger netxlite.Logger) {
 	// QUIRK: here it suffices to use a connector because the
@@ -106,8 +109,7 @@ func (instr *UntestedHTTPEndpointInstructions) Measure(
 	case "https":
 		instr.tls(ctx, db, logger, conn)
 	default:
-		// We don't have this case but closing the connection
-		// and the connect measurement will be there
+		// This should not happen. If it happens, be tidy.
 		conn.Close()
 	}
 }

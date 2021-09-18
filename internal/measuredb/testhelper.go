@@ -1,5 +1,9 @@
 package measuredb
 
+// This file contains the generic spec of a test helper. We use
+// a test helper during the dial phase to gather more information
+// on the endpoints that we're about to test.
+
 import (
 	"context"
 	"errors"
