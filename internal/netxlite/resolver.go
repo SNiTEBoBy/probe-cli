@@ -3,9 +3,11 @@ package netxlite
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/ooni/probe-cli/v3/internal/netxlite/dnsx"
 	"github.com/ooni/probe-cli/v3/internal/netxlite/errorsx"
 	"golang.org/x/net/idna"
@@ -156,28 +158,51 @@ type resolverLogger struct {
 var _ Resolver = &resolverLogger{}
 
 func (r *resolverLogger) LookupHost(ctx context.Context, hostname string) ([]string, error) {
-	r.Logger.Debugf("resolve %s...", hostname)
+	prefix := fmt.Sprintf("resolve[A,AAAA] %s with %s (%s)", hostname, r.Network(), r.Address())
+	r.Logger.Debugf("%s...", prefix)
 	start := time.Now()
 	addrs, err := r.Resolver.LookupHost(ctx, hostname)
 	elapsed := time.Since(start)
 	if err != nil {
-		r.Logger.Debugf("resolve %s... %s in %s", hostname, err, elapsed)
+		r.Logger.Debugf("%s... %s in %s", prefix, err, elapsed)
 		return nil, err
 	}
-	r.Logger.Debugf("resolve %s... %+v in %s", hostname, addrs, elapsed)
+	r.Logger.Debugf("%s... %+v in %s", prefix, addrs, elapsed)
 	return addrs, nil
 }
 
 func (r *resolverLogger) LookupHostWithoutRetry(
 	ctx context.Context, domain string, qtype uint16) ([]string, error) {
-	// TODO(bassosimone): implement
-	return r.Resolver.LookupHostWithoutRetry(ctx, domain, qtype)
+	qtypename := dns.TypeToString[qtype]
+	prefix := fmt.Sprintf("resolve[%s] %s with %s (%s)", qtypename, domain, r.Network(), r.Address())
+	r.Logger.Debugf("%s...", prefix)
+	start := time.Now()
+	addrs, err := r.Resolver.LookupHostWithoutRetry(ctx, domain, qtype)
+	elapsed := time.Since(start)
+	if err != nil {
+		r.Logger.Debugf("%s... %s in %s", prefix, err, elapsed)
+		return nil, err
+	}
+	r.Logger.Debugf("%s... %+v in %s", prefix, addrs, elapsed)
+	return addrs, nil
 }
 
 func (r *resolverLogger) LookupHTTPSWithoutRetry(
 	ctx context.Context, domain string) (HTTPS, error) {
-	// TODO(bassosimone): implement
-	return r.Resolver.LookupHTTPSWithoutRetry(ctx, domain)
+	prefix := fmt.Sprintf("resolve[HTTPS] %s with %s (%s)", domain, r.Network(), r.Address())
+	r.Logger.Debugf("%s...", prefix)
+	start := time.Now()
+	https, err := r.Resolver.LookupHTTPSWithoutRetry(ctx, domain)
+	elapsed := time.Since(start)
+	if err != nil {
+		r.Logger.Debugf("%s... %s in %s", prefix, err, elapsed)
+		return nil, err
+	}
+	alpn := https.ALPN()
+	a := https.IPv4Hint()
+	aaaa := https.IPv6Hint()
+	r.Logger.Debugf("%s... %+v %+v %+v in %s", prefix, alpn, a, aaaa, elapsed)
+	return https, nil
 }
 
 // resolverIDNA supports resolving Internationalized Domain Names.

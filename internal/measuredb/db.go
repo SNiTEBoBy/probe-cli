@@ -61,6 +61,13 @@ type DB interface {
 	// entries of the test-helper-measurement table.
 	SelectAllFromTestHelperMeasurement() []*TestHelperMeasurement
 
+	// InsertIntoLookupHTTPS inserts an event into the
+	// lookup-https table for HTTPS queries.
+	InsertIntoLookupHTTPS(v *LookupHTTPSEvent)
+
+	// SelectAllFromLookupHTTPS returns the lookup-https table content.
+	SelectAllFromLookupHTTPS() []*LookupHTTPSEvent
+
 	/*
 	 * Support for precise HTTP round trip measurements
 	 *

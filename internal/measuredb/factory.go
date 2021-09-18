@@ -17,11 +17,24 @@ import (
 )
 
 func newDefaultCompoundResolver(logger netxlite.Logger, db DB) netxlite.Resolver {
-	sys := &netxlite.ResolverSystem{}
+	sys := netxlite.NewResolverStdlib(logger)
 	d := WrapConnector(db, netxlite.NewConnector(logger))
-	udp53 := dnsx.NewSerialResolver(
-		WrapDNSRoundTripper(db, dnsx.NewDNSOverUDP(d, "8.8.4.4:53")))
-	return WrapResolvers(db, sys, udp53)
+	// TODO(bassosimone): we need to inject all these configuration
+	// options from the outside of the measuredb code.
+	udp53 := &netxlite.ResolverLogger{
+		Resolver: dnsx.NewSerialResolver(
+			WrapDNSRoundTripper(db, dnsx.NewDNSOverUDP(d, "8.8.4.4:53"))),
+		Logger: logger,
+	}
+	encrypted := &netxlite.ResolverLogger{
+		Resolver: dnsx.NewSerialResolver(
+			WrapDNSRoundTripper(db, dnsx.NewDNSOverHTTPS(
+				http.DefaultClient, "https://dns.google/dns-query",
+			)),
+		),
+		Logger: logger,
+	}
+	return WrapResolvers(db, sys, udp53, encrypted)
 }
 
 // NewHTTPTransportStdlib is a convenience factory for creating

@@ -84,8 +84,7 @@ func (r *resolverDB) LookupHost(ctx context.Context, domain string) ([]string, e
 //
 // - scan the list of underlying resolvers
 //
-// - if we find a "dot" or "https" resolver issue the
-// HTTPS query using it
+// - if we find a suitable resolver issue an HTTPS query
 //
 // - on success return the result, on failure continue looping
 //
@@ -95,11 +94,12 @@ func WrapResolvers(db DB, or ...netxlite.Resolver) netxlite.Resolver {
 	for _, r := range or {
 		wr = append(wr, WrapResolver(db, r))
 	}
-	return &compoundResolver{children: wr}
+	return &compoundResolver{children: wr, db: db}
 }
 
 type compoundResolver struct {
 	children []netxlite.Resolver
+	db       DB
 }
 
 func (r *compoundResolver) LookupHost(ctx context.Context, domain string) ([]string, error) {
@@ -144,14 +144,17 @@ func (r *compoundResolver) LookupHostWithoutRetry(
 
 func (r *compoundResolver) LookupHTTPSWithoutRetry(
 	ctx context.Context, domain string) (netxlite.HTTPS, error) {
-	for _, r := range r.children {
-		switch r.Network() {
-		// Rationale: only use encrypted transports.
-		case "https", "dot":
-			if https, err := r.LookupHTTPSWithoutRetry(ctx, domain); err == nil {
-				return https, nil
-			}
+	for _, child := range r.children {
+		// TODO(bassosimone): we should probably merge all the results
+		// here like we already do for A,AAAA lookups
+		if https, err := r.queryHTTPS(ctx, child, domain); err == nil {
+			return https, nil
 		}
 	}
 	return nil, netxlite.ErrNoDNSTransport
+}
+
+func (r *compoundResolver) queryHTTPS(ctx context.Context,
+	child netxlite.Resolver, domain string) (netxlite.HTTPS, error) {
+	return svcbLookupHTTPSWithoutRetry(ctx, r.db, child, domain)
 }

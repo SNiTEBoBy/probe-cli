@@ -35,7 +35,7 @@ import (
 //
 // 1. perform DNS queries (A, AAAA, possibly SVCB);
 //
-// 2. call the test helper to augment our view of the endpoint to test;
+// 2. query the test helper to augment our view of the endpoint to test;
 //
 // 3. build a list of TCP/QUIC endpoints to test;
 //
@@ -44,7 +44,8 @@ import (
 // 5. attempt to TCP connect all of the TCP endpoints and return
 // at the first success. All untested endpoints are still accessible
 // later via the DomainEndpoint table, which gives us a chance to
-// measure anyone of them at a later time.
+// measure anyone of them at a later time. We skip all QUIC endpoints
+// by default: they are always processed as untested endpoints.
 func NewDialer(logger netxlite.Logger, db DB, th TestHelper,
 	resolver netxlite.Resolver, connector netxlite.Connector) netxlite.Dialer {
 	return &netxlite.DialerLogger{
@@ -111,6 +112,13 @@ type DomainEndpointBinding struct {
 
 func domainEndpointsAsEndpoints(des []*DomainEndpointBinding) (out []string) {
 	for _, de := range des {
+		switch de.Network {
+		case "tcp":
+		default:
+			// Do not pass to the test helper QUIC addresses. When we
+			// will upgrade the test helper we can change this.
+			continue
+		}
 		out = append(out, de.Address)
 	}
 	return
@@ -140,8 +148,7 @@ func domainEndpointsMergeTestHelperEndpoints(db DB,
 		m[epnt.Address] = true
 	}
 	for _, entry := range resp.DNSAddrs {
-		address := net.JoinHostPort(entry, port)
-		if !m[entry] {
+		if address := net.JoinHostPort(entry, port); !m[address] {
 			endpoints = append(endpoints, &DomainEndpointBinding{
 				HTTPRoundTripID: db.HTTPRoundTripID(),
 				Origin:          EndpointOriginTestHelper,
@@ -156,24 +163,70 @@ func domainEndpointsMergeTestHelperEndpoints(db DB,
 	return endpoints
 }
 
+func httpsReplyContainsH3(https netxlite.HTTPS) bool {
+	for _, alpn := range https.ALPN() {
+		switch alpn {
+		case "h3":
+			return true
+		}
+	}
+	return false
+}
+
+func httpsReplyGetAllIPAddrs(https netxlite.HTTPS) (addrs []string) {
+	addrs = append(addrs, https.IPv4Hint()...)
+	addrs = append(addrs, https.IPv6Hint()...)
+	return
+}
+
+func domainEndpointsMergeHTTPS(db DB, origin, domain, port string,
+	endpoints []*DomainEndpointBinding, https netxlite.HTTPS) []*DomainEndpointBinding {
+	if !httpsReplyContainsH3(https) {
+		return endpoints
+	}
+	for _, addr := range httpsReplyGetAllIPAddrs(https) {
+		endpoints = append(endpoints, &DomainEndpointBinding{
+			HTTPRoundTripID: db.HTTPRoundTripID(),
+			Origin:          origin,
+			Domain:          domain,
+			Network:         "h3",
+			Address:         net.JoinHostPort(addr, port),
+			EndpointID:      0,   // for now
+			conn:            nil, // for now
+		})
+	}
+	return endpoints
+}
+
 func (d *dialerDB) DialContext(
 	ctx context.Context, network, address string) (net.Conn, error) {
 	domain, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
-	// TODO(bassosimone): we should run a SVCB query here
+
+	// 1. issue normal lookup A+AAAA query
 	addrs, err := d.resolver.LookupHost(ctx, domain)
 	if err != nil {
 		return nil, err
 	}
 	endpoints := newDomainEndpoints(
 		d.db, EndpointOriginProbe, domain, network, port, addrs...)
+
+	// 2. issue HTTPS/SVCB query if possible
+	https, err := d.resolver.LookupHTTPSWithoutRetry(ctx, domain)
+	if err == nil {
+		endpoints = domainEndpointsMergeHTTPS(
+			d.db, EndpointOriginProbe, domain, port, endpoints, https)
+	}
+
+	// 3. query the test helper if possible
 	thResp, err := d.th.Run(ctx, domainEndpointsAsEndpoints(endpoints))
 	if err == nil {
 		endpoints = domainEndpointsMergeTestHelperEndpoints(
 			d.db, domain, network, port, endpoints, thResp)
 	}
+
 	return d.dialLoop(ctx, endpoints)
 }
 
@@ -182,6 +235,13 @@ func (d *dialerDB) dialLoop(
 	// TODO(bassosimone): could we run these steps in parallel
 	// without screwing up with connection ID assignation?
 	for _, epnt := range endpoints {
+		switch epnt.Network {
+		case "tcp", "udp":
+		default:
+			// Skip QUIC endpoints. They will always be tested
+			// as untested endpoints after we've tried TCP.
+			continue
+		}
 		conn, err := d.connector.DialContext(ctx, epnt.Network, epnt.Address)
 		// Implementation note: we MUST get the endpoint ID HERE rather
 		// than before DialContext because we increment the endpoint

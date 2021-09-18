@@ -95,6 +95,17 @@ func MeasureUntestedEndpoints(ctx context.Context, db DB,
 // whether to use parroting from TLSHandshakeEvent.
 func (instr *UntestedHTTPEndpointInstructions) Measure(
 	ctx context.Context, db DB, logger netxlite.Logger) {
+	switch instr.Network {
+	case "tcp":
+		instr.tcp(ctx, db, logger)
+	default:
+		// TODO(bassosimone): add support for QUIC
+		// nothing
+	}
+}
+
+func (instr *UntestedHTTPEndpointInstructions) tcp(
+	ctx context.Context, db DB, logger netxlite.Logger) {
 	// QUIRK: here it suffices to use a connector because the
 	// connect increments the endpoint ID. We should maybe zap
 	// this comment when we have testing, but for now...
