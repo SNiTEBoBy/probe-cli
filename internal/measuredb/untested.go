@@ -42,7 +42,7 @@ func NewUntestedHTTPEndpointInstructions(
 	db DB, epnts []*DomainEndpoint) ([]*UntestedHTTPEndpointInstructions, error) {
 	var out []*UntestedHTTPEndpointInstructions
 	for _, dep := range epnts {
-		rtx, err := selectHTTPRoundTripWithRoundTripID(db, dep.RoundTripID)
+		rtx, err := selectHTTPRoundTripWithRoundTripID(db, dep.HTTPRoundTripID)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +54,7 @@ func NewUntestedHTTPEndpointInstructions(
 			Network: dep.Network,
 			Address: dep.Address,
 		}
-		thx, err := selectTLSHandshakeWithRoundTripID(db, dep.RoundTripID)
+		thx, err := selectTLSHandshakeWithRoundTripID(db, dep.HTTPRoundTripID)
 		if err != nil && m.Network == "tcp" && m.URL.Scheme == "https" {
 			return nil, err
 		}

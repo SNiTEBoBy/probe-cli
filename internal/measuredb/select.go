@@ -55,3 +55,18 @@ func selectDNSRoundTripWithRoundTripIP(db DB, id int64) ([]*DNSRoundTrip, error)
 	}
 	return out, nil
 }
+
+var errHTTPRoundTripURLNotFound = errors.New("cannot find HTTPRoundTripURL")
+
+func SelectURLFromHTTPRoundTripURLWithCurrentRoundTrip(db DB) (string, error) {
+	if !db.SupportsPreciseRoundTripMeasurements() {
+		return "", errNoDatabaseSupport
+	}
+	id := db.HTTPRoundTripID()
+	for _, rtx := range db.SelectAllFromHTTPRoundTripURL() {
+		if id == rtx.HTTPRoundTripID {
+			return rtx.URL.String(), nil
+		}
+	}
+	return "", errHTTPRoundTripURLNotFound
+}

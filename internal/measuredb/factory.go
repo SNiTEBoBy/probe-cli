@@ -31,7 +31,8 @@ func NewHTTPTransportStdlib(logger netxlite.Logger, db DB) netxlite.HTTPTranspor
 	resolver := newDefaultCompoundResolver(logger, db)
 	connector := WrapConnector(db, netxlite.NewConnector(logger))
 	thx := WrapTLSHandshaker(db, netxlite.NewTLSHandshakerStdlib(logger))
-	dialer := NewDialer(db, logger, resolver, connector)
+	wcthw := NewWCTHWorker(logger, db, &http.Client{}, "https://wcth.ooni.io/")
+	dialer := NewDialer(logger, db, wcthw, resolver, connector)
 	td := netxlite.NewTLSDialer(dialer, thx)
 	return netxlite.WrapHTTPTransport(logger, WrapHTTPTransport(
 		db, netxlite.NewOOHTTPBaseTransport(dialer, td),
@@ -67,6 +68,16 @@ func NewHTTPClientStdlib(logger netxlite.Logger, db DB) *http.Client {
 	return NewHTTPClient(NewHTTPTransportStdlib(logger, db))
 }
 
+// NewHTTPRequestHeaderForMeasuring returns an http.Header where
+// the headers are the ones we use for measuring.
+func NewHTTPRequestHeaderForMeasuring() http.Header {
+	h := http.Header{}
+	h.Set("Accept", httpheader.Accept())
+	h.Set("Accept-Language", httpheader.AcceptLanguage())
+	h.Set("User-Agent", httpheader.UserAgent())
+	return h
+}
+
 // NewHTTPRequestWithContext is a convenience factory for creating
 // a new HTTP request with the typical headers we use when performing
 // measurements already set inside of req.Header.
@@ -76,9 +87,7 @@ func NewHTTPRequestWithContext(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", httpheader.Accept())
-	req.Header.Set("Accept-Language", httpheader.AcceptLanguage())
-	req.Header.Set("User-Agent", httpheader.UserAgent())
+	req.Header = NewHTTPRequestHeaderForMeasuring()
 	return req, nil
 }
 

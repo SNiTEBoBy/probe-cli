@@ -99,4 +99,12 @@ type DB interface {
 	// SelectAllFromHTTPRoundTripURL returns all the
 	// entries of the http-round-trip-url table.
 	SelectAllFromHTTPRoundTripURL() []*HTTPRoundTripURL
+
+	// InsertIntoTestHelperMeasurement inserts an event into
+	// the test-helper-measurement table.
+	InsertIntoTestHelperMeasurement(v *TestHelperMeasurement)
+
+	// SelectAllFromTestHelperMeasurement returns all the
+	// entries of the test-helper-measurement table.
+	SelectAllFromTestHelperMeasurement() []*TestHelperMeasurement
 }

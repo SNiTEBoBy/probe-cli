@@ -27,6 +27,7 @@ type memoryDB struct {
 	httpRoundTrip    []*HTTPRoundTrip
 	dnsRoundTrip     []*DNSRoundTrip
 	httpRoundTripURL []*HTTPRoundTripURL
+	testHelperMeas   []*TestHelperMeasurement
 
 	// mu provides mutual exclusion when accessing data
 	mu sync.Mutex
@@ -172,6 +173,19 @@ func (db *memoryDB) InsertIntoHTTPRoundTripURL(v *HTTPRoundTripURL) {
 func (db *memoryDB) SelectAllFromHTTPRoundTripURL() (out []*HTTPRoundTripURL) {
 	db.mu.Lock()
 	out = append(out, db.httpRoundTripURL...)
+	db.mu.Unlock()
+	return
+}
+
+func (db *memoryDB) InsertIntoTestHelperMeasurement(v *TestHelperMeasurement) {
+	db.mu.Lock()
+	db.testHelperMeas = append(db.testHelperMeas, v)
+	db.mu.Unlock()
+}
+
+func (db *memoryDB) SelectAllFromTestHelperMeasurement() (out []*TestHelperMeasurement) {
+	db.mu.Lock()
+	out = append(out, db.testHelperMeas...)
 	db.mu.Unlock()
 	return
 }
