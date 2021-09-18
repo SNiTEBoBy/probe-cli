@@ -64,28 +64,47 @@ func (r *resolverDB) LookupHost(ctx context.Context, domain string) ([]string, e
 // CAVEAT: passing no resolvers as parameters create a new
 // resolver that always returns NXDOMAIN for every query.
 //
-// Algorithm: we basically wrap every input resolver using
-// the WrapResolver factory. Then we create a compound
-// resolver type (unexported) that will perform all the
-// queries (possibly in parallel). Such a compound resolver
-// returns either the union of all discovered IPs or the
-// ErrOODNSNoSuchHost to indicate it could not find any
-// address using any of the underlying resolvers.
+// WrapResolvers algorithm
+//
+// - wrap every element in `or` using WrapResolver
+//
+// - return a compound resolver type (unexported)
+//
+// LookupHost algorithm
+//
+// - try every child resolver
+//
+// - return union of returned addrs or ErrOODNSNoSuchHost
+//
+// LookupHostWithoutRetry algorithm
+//
+// - always return the ErrNoDNSTransport error
+//
+// LookupHTTPSWithoutRetry algorithm
+//
+// - scan the list of underlying resolvers
+//
+// - if we find a "dot" or "https" resolver issue the
+// HTTPS query using it
+//
+// - on success return the result, on failure continue looping
+//
+// - if we scan the whole list return ErrNoDNSTransport.
 func WrapResolvers(db DB, or ...netxlite.Resolver) netxlite.Resolver {
 	var wr []netxlite.Resolver
 	for _, r := range or {
 		wr = append(wr, WrapResolver(db, r))
 	}
-	return &compoundResolver{wr: wr}
+	return &compoundResolver{children: wr}
 }
 
 type compoundResolver struct {
-	wr []netxlite.Resolver
+	children []netxlite.Resolver
 }
 
 func (r *compoundResolver) LookupHost(ctx context.Context, domain string) ([]string, error) {
 	m := make(map[string]int)
-	for _, ir := range r.wr {
+	for _, ir := range r.children {
 		addrs, err := ir.LookupHost(ctx, domain)
 		if err != nil {
 			continue
@@ -113,7 +132,7 @@ func (r *compoundResolver) Address() string {
 }
 
 func (r *compoundResolver) CloseIdleConnections() {
-	for _, ir := range r.wr {
+	for _, ir := range r.children {
 		ir.CloseIdleConnections()
 	}
 }
@@ -125,5 +144,14 @@ func (r *compoundResolver) LookupHostWithoutRetry(
 
 func (r *compoundResolver) LookupHTTPSWithoutRetry(
 	ctx context.Context, domain string) (netxlite.HTTPS, error) {
+	for _, r := range r.children {
+		switch r.Network() {
+		// Rationale: only use encrypted transports.
+		case "https", "dot":
+			if https, err := r.LookupHTTPSWithoutRetry(ctx, domain); err == nil {
+				return https, nil
+			}
+		}
+	}
 	return nil, netxlite.ErrNoDNSTransport
 }
