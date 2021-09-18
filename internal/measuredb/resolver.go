@@ -76,7 +76,7 @@ func WrapResolvers(db DB, or ...netxlite.Resolver) netxlite.Resolver {
 	for _, r := range or {
 		wr = append(wr, WrapResolver(db, r))
 	}
-	return netxlite.NewResolverLegacyAdapter(&compoundResolver{wr: wr})
+	return &compoundResolver{wr: wr}
 }
 
 type compoundResolver struct {
@@ -116,4 +116,14 @@ func (r *compoundResolver) CloseIdleConnections() {
 	for _, ir := range r.wr {
 		ir.CloseIdleConnections()
 	}
+}
+
+func (r *compoundResolver) LookupHostWithoutRetry(
+	ctx context.Context, domain string, qtype uint16) ([]string, error) {
+	return nil, netxlite.ErrNoDNSTransport
+}
+
+func (r *compoundResolver) LookupHTTPSWithoutRetry(
+	ctx context.Context, domain string) (netxlite.HTTPS, error) {
+	return nil, netxlite.ErrNoDNSTransport
 }
