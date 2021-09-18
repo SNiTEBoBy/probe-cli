@@ -10,13 +10,23 @@ import (
 type HTTPS = model.HTTPS
 
 type https struct {
-	alpn []string
+	alpn     []string
+	ipv4hint []string
+	ipv6hint []string
 }
 
 var _ HTTPS = &https{}
 
 func (h *https) ALPN() []string {
 	return h.alpn
+}
+
+func (h *https) IPv4Hint() []string {
+	return h.ipv4hint
+}
+
+func (h *https) IPv6Hint() []string {
+	return h.ipv6hint
 }
 
 // The Decoder decodes a DNS replies.
@@ -62,7 +72,15 @@ func (d *MiekgDecoder) DecodeHTTPS(data []byte) (HTTPS, error) {
 			for _, v := range avalue.Value {
 				switch extv := v.(type) {
 				case *dns.SVCBAlpn:
-					out.alpn = append(out.alpn, extv.Alpn...)
+					out.alpn = extv.Alpn
+				case *dns.SVCBIPv4Hint:
+					for _, ip := range extv.Hint {
+						out.ipv4hint = append(out.ipv4hint, ip.String())
+					}
+				case *dns.SVCBIPv6Hint:
+					for _, ip := range extv.Hint {
+						out.ipv6hint = append(out.ipv6hint, ip.String())
+					}
 				}
 			}
 		}
